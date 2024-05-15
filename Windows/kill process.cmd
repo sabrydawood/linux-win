@@ -1,6 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
-set /p PORT=Enter the port number:
+
+:: Check if a port number is passed as a command-line argument
+if "%~1" neq "" (
+    set "PORT=%~1"
+) else (
+    set /p PORT=Enter the port number:
+)
+
 :: Find the process using the specified port
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%PORT%"') do set "PID=%%a"
 :: Check if PID is not empty (process found)
@@ -24,5 +31,3 @@ if not "!PID!"=="" (
 )
 
 endlocal
-
-
