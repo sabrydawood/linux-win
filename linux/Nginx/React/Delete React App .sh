@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_DIR="/home/shared/Work/.apps"
+CONFIG_DIR="/home/shared/Work/.apps/React"
 
 read -p "React AppName to delete: " APP_NAME
 CONFIG_FILE="$CONFIG_DIR/$APP_NAME.conf"

@@ -4,7 +4,7 @@ BASE_PATH="/home/shared/Work"
 DEFAULT_DOMAIN="futuresolutionsdev.com"
 SSL_EMAIL="kazsouya25@gmail.com"
 
-CONFIG_DIR="$BASE_PATH/.apps"
+CONFIG_DIR="$BASE_PATH/.apps/Nodejs"
 mkdir -p "$CONFIG_DIR"
 
 read -p "AppName: " APP_NAME
@@ -44,7 +44,7 @@ EOF
 #  Database If needed
 if [[ "$DB_CHOICE" == "y" ]]; then
   echo "Creating MariaDB database: $DB_NAME"
-  mariadb -u root -p -e "CREATE DATABASE \`$DB_NAME\` CHARACTER SET utf8 COLLATE utf8mb3_unicode_ci;"
+  mariadb -u root -p -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8 COLLATE utf8mb3_unicode_ci;"
 fi
 
 # PM2
@@ -65,7 +65,10 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
-    }
+
+        # Custom headers ( Carful This May Duplicate If Your Code Returns Same Headers )
+	      add_header Server "WorkStation.Server.Nova"; 
+        }
 }
 EOF
 

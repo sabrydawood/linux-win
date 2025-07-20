@@ -1,47 +1,103 @@
 #!/bin/bash
 
+set -e  # Exit on any error
+set -o pipefail
+
 BASE_PATH="/home/shared/Work"
 DEFAULT_DOMAIN="futuresolutionsdev.com"
 SSL_EMAIL="kazsouya25@gmail.com"
+CONFIG_DIR="$BASE_PATH/.apps/React"
+USED_PORTS_FILE="$BASE_PATH/used_ports.txt"
 
-CONFIG_DIR="$BASE_PATH/.apps"
 mkdir -p "$CONFIG_DIR"
 
+# Variables for cleanup
+CLEANUP_PORT=""
+CLEANUP_PM2_NAME=""
+CLEANUP_NGINX_FILE=""
+CLEANUP_APP_PATH=""
+CLEANUP_CONFIG_FILE=""
+
+# Rollback logic
+cleanup() {
+  echo "⚠️ Rolling back due to error..."
+
+  if [[ -n "$CLEANUP_PORT" ]]; then
+    echo "🧹 Releasing port $CLEANUP_PORT"
+    sed -i "/^$CLEANUP_PORT$/d" "$USED_PORTS_FILE"
+  fi
+
+  if [[ -n "$CLEANUP_PM2_NAME" ]]; then
+    echo "🧹 Removing PM2 process $CLEANUP_PM2_NAME"
+    pm2 delete "$CLEANUP_PM2_NAME" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$CLEANUP_NGINX_FILE" ]]; then
+    echo "🧹 Removing NGINX config $CLEANUP_NGINX_FILE"
+    rm -f "$CLEANUP_NGINX_FILE"
+    rm -f "/etc/nginx/sites-enabled/$(basename "$CLEANUP_NGINX_FILE")"
+    nginx -t && systemctl reload nginx || true
+  fi
+
+  if [[ -n "$CLEANUP_APP_PATH" && -d "$CLEANUP_APP_PATH" ]]; then
+    echo "🧹 Deleting app folder $CLEANUP_APP_PATH"
+    rm -rf "$CLEANUP_APP_PATH"
+  fi
+
+  if [[ -n "$CLEANUP_CONFIG_FILE" && -f "$CLEANUP_CONFIG_FILE" ]]; then
+    echo "🧹 Removing config file $CLEANUP_CONFIG_FILE"
+    rm -f "$CLEANUP_CONFIG_FILE"
+  fi
+
+  echo "🛑 Deployment failed and rollback complete."
+}
+trap cleanup ERR
+
+# ========== INPUT ==========
 read -p "React App Name: " APP_NAME
 read -p "Path (relative to $BASE_PATH): " REL_PATH
 APP_PATH="$BASE_PATH/$REL_PATH"
 read -p "Subdomain: " SUBDOMAIN
 read -p "Git repo (leave blank if not available): " GIT_REPO
 
+# Check if HTTPS private repo and ask for PAT if needed
+if [[ "$GIT_REPO" == https://* ]]; then
+  read -p "Is this a private repo? (y/n): " IS_PRIVATE
+  if [[ "$IS_PRIVATE" == "y" || "$IS_PRIVATE" == "Y" ]]; then
+    echo "🔐 Enter your GitHub username and Personal Access Token (PAT)"
+    read -p "GitHub Username: " GIT_USER
+    read -s -p "Personal Access Token (input hidden): " GIT_PAT
+    echo
+    GIT_REPO=$(echo "$GIT_REPO" | sed "s#https://#https://$GIT_USER:$GIT_PAT@#")
+  fi
+elif [[ "$GIT_REPO" == git@* ]]; then
+  echo "🔑 Make sure your SSH key is added to your GitHub account"
+fi
+
 DOMAIN="$SUBDOMAIN.$DEFAULT_DOMAIN"
 
-# Get available port
-USED_PORTS_FILE="$BASE_PATH/used_ports.txt"
+# ========== PORT ==========
 for port in {3000..3999}; do
   if ! grep -q "$port" "$USED_PORTS_FILE" 2>/dev/null && ! lsof -i:$port >/dev/null; then
     PORT=$port
     echo $PORT >> "$USED_PORTS_FILE"
+    CLEANUP_PORT=$PORT
     break
   fi
 done
-
 echo "✅ Using port: $PORT"
 
-# Create app directory
+# ========== CREATE FOLDER ==========
 mkdir -p "$APP_PATH"
+CLEANUP_APP_PATH="$APP_PATH"
 cd "$APP_PATH"
 
+# ========== CLONE OR CREATE ==========
 if [[ -n "$GIT_REPO" ]]; then
   echo "📥 Cloning repo..."
-  git clone "$GIT_REPO" . || {
-    echo "❌ Failed to clone repo. Exiting."
-    exit 1
-  }
+  git clone "$GIT_REPO" . || exit 1
   npm install
-  npm run build || {
-    echo "❌ Build failed. Exiting."
-    exit 1
-  }
+  npm run build || exit 1
 else
   echo "📝 Creating basic HTML page..."
   mkdir -p build
@@ -54,30 +110,18 @@ else
 EOF
 fi
 
-# Install serve if not exists
-if ! command -v serve &> /dev/null; then
-  npm install -g serve
-fi
 
-# PM2
-pm2 start "serve -s build -l $PORT" --name "$APP_NAME"
-pm2 save
-pm2 startup systemd -u root --hp /home/shared
-
-# NGINX config
+# ========== NGINX ==========
 NGINX_FILE="/etc/nginx/sites-available/$DOMAIN"
 cat <<EOF > $NGINX_FILE
 server {
     listen 80;
     server_name $DOMAIN;
 
+    root $APP_PATH/$BUILD_FOLDER;
+    index index.html;
+
     location / {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
         try_files \$uri \$uri/ /index.html;
     }
 }
@@ -85,20 +129,44 @@ EOF
 
 ln -s $NGINX_FILE /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
+CLEANUP_NGINX_FILE="$NGINX_FILE"
 
-# SSL
+# ========== SSL ==========
 echo "🔐 Setting up SSL for $DOMAIN"
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$SSL_EMAIL"
 echo "0 0 * * * certbot renew --quiet" | crontab -
 
-# UFW
+# 3. Update NGINX config for SSL
+cat <<EOF >> $NGINX_FILE
+server {
+    listen 443 ssl;
+    server_name $DOMAIN;
+
+    root $APP_PATH/$BUILD_FOLDER;
+    index index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+EOF
+
+nginx -t && systemctl reload nginx
+
+# ========== FIREWALL ==========
 echo "🛡️ UFW Protection Enabled"
 ufw allow 'Nginx Full'
 ufw allow OpenSSH
 ufw enable
 
-# Save config
-cat <<EOF > "$CONFIG_DIR/$APP_NAME.conf"
+# ========== SAVE CONFIG ==========
+CONFIG_FILE="$CONFIG_DIR/$APP_NAME.conf"
+cat <<EOF > "$CONFIG_FILE"
 APP_NAME=$APP_NAME
 APP_PATH=$APP_PATH
 DOMAIN=$DOMAIN
@@ -106,11 +174,13 @@ SUBDOMAIN=$SUBDOMAIN
 PORT=$PORT
 GIT_REPO=$GIT_REPO
 EOF
+CLEANUP_CONFIG_FILE="$CONFIG_FILE"
 
-echo "✅ React App $APP_NAME created and config saved to $CONFIG_DIR/$APP_NAME.conf"
+# ========== DONE ==========
+trap - ERR  # Disable cleanup
+echo "✅ React App $APP_NAME created and config saved to $CONFIG_FILE"
 echo "🌐 App is live at: https://$DOMAIN"
 echo "▶️ To start: pm2 start $APP_NAME"
 echo "⏹️ To stop: pm2 stop $APP_NAME"
 echo "❌ To delete: pm2 delete $APP_NAME"
-
 echo "🎉 Done."
