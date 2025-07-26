@@ -22,16 +22,6 @@ CLEANUP_CONFIG_FILE=""
 cleanup() {
   echo "⚠️ Rolling back due to error..."
 
-  if [[ -n "$CLEANUP_PORT" ]]; then
-    echo "🧹 Releasing port $CLEANUP_PORT"
-    sed -i "/^$CLEANUP_PORT$/d" "$USED_PORTS_FILE"
-  fi
-
-  if [[ -n "$CLEANUP_PM2_NAME" ]]; then
-    echo "🧹 Removing PM2 process $CLEANUP_PM2_NAME"
-    pm2 delete "$CLEANUP_PM2_NAME" >/dev/null 2>&1 || true
-  fi
-
   if [[ -n "$CLEANUP_NGINX_FILE" ]]; then
     echo "🧹 Removing NGINX config $CLEANUP_NGINX_FILE"
     rm -f "$CLEANUP_NGINX_FILE"
@@ -73,19 +63,13 @@ if [[ "$GIT_REPO" == https://* ]]; then
 elif [[ "$GIT_REPO" == git@* ]]; then
   echo "🔑 Make sure your SSH key is added to your GitHub account"
 fi
+if [[ -n "$GIT_REPO" ]]; then
+  read -p "Branch name (leave blank for 'main'): " GIT_BRANCH
+  GIT_BRANCH=${GIT_BRANCH:-main}
+fi
 
 DOMAIN="$SUBDOMAIN.$DEFAULT_DOMAIN"
 
-# ========== PORT ==========
-for port in {3000..3999}; do
-  if ! grep -q "$port" "$USED_PORTS_FILE" 2>/dev/null && ! lsof -i:$port >/dev/null; then
-    PORT=$port
-    echo $PORT >> "$USED_PORTS_FILE"
-    CLEANUP_PORT=$PORT
-    break
-  fi
-done
-echo "✅ Using port: $PORT"
 
 # ========== CREATE FOLDER ==========
 mkdir -p "$APP_PATH"
@@ -95,13 +79,13 @@ cd "$APP_PATH"
 # ========== CLONE OR CREATE ==========
 if [[ -n "$GIT_REPO" ]]; then
   echo "📥 Cloning repo..."
-  git clone "$GIT_REPO" . || exit 1
+  git clone -b "$GIT_BRANCH" --single-branch "$GIT_REPO" . || exit 1
   npm install
   npm run build || exit 1
 else
   echo "📝 Creating basic HTML page..."
-  mkdir -p build
-  cat <<EOF > build/index.html
+  mkdir -p dist
+  cat <<EOF > dist/index.html
 <!DOCTYPE html>
 <html>
 <head><title>$APP_NAME</title></head>
@@ -109,6 +93,10 @@ else
 </html>
 EOF
 fi
+
+# Ask For BuildFolder name
+read -p "Build Folder Name (default: dist): " BUILD_FOLDER
+BUILD_FOLDER=${BUILD_FOLDER:-dist}
 
 
 # ========== NGINX ==========
@@ -136,26 +124,6 @@ echo "🔐 Setting up SSL for $DOMAIN"
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$SSL_EMAIL"
 echo "0 0 * * * certbot renew --quiet" | crontab -
 
-# 3. Update NGINX config for SSL
-cat <<EOF >> $NGINX_FILE
-server {
-    listen 443 ssl;
-    server_name $DOMAIN;
-
-    root $APP_PATH/$BUILD_FOLDER;
-    index index.html;
-
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-}
-EOF
-
 nginx -t && systemctl reload nginx
 
 # ========== FIREWALL ==========
@@ -171,7 +139,6 @@ APP_NAME=$APP_NAME
 APP_PATH=$APP_PATH
 DOMAIN=$DOMAIN
 SUBDOMAIN=$SUBDOMAIN
-PORT=$PORT
 GIT_REPO=$GIT_REPO
 EOF
 CLEANUP_CONFIG_FILE="$CONFIG_FILE"
@@ -180,7 +147,6 @@ CLEANUP_CONFIG_FILE="$CONFIG_FILE"
 trap - ERR  # Disable cleanup
 echo "✅ React App $APP_NAME created and config saved to $CONFIG_FILE"
 echo "🌐 App is live at: https://$DOMAIN"
-echo "▶️ To start: pm2 start $APP_NAME"
-echo "⏹️ To stop: pm2 stop $APP_NAME"
-echo "❌ To delete: pm2 delete $APP_NAME"
 echo "🎉 Done."
+
+exit 0

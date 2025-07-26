@@ -2,7 +2,7 @@
 
 BASE_PATH="/home/shared/Work"
 DEFAULT_DOMAIN="futuresolutionsdev.com"
-SSL_EMAIL="kazsouya25@gmail.com"
+SSL_EMAIL="kazouya25@gmail.com"
 
 CONFIG_DIR="$BASE_PATH/.apps/Nodejs"
 mkdir -p "$CONFIG_DIR"

@@ -1,28 +1,34 @@
 #!/bin/bash
 
 CONFIG_DIR="/home/shared/Work/.apps/Nodejs"
+USED_PORTS_FILE="/home/shared/Work/used_ports.txt"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
 read -p "AppName to delete: " APP_NAME
 CONFIG_FILE="$CONFIG_DIR/$APP_NAME.conf"
 
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "❌ Config file not found for $APP_NAME"
+  echo -e "${RED}❌ Config file not found for $APP_NAME${NC}"
   exit 1
 fi
 
-# Get Config File
+# Load Config
 source "$CONFIG_FILE"
 
-echo "⚠️ Deleting application: $APP_NAME"
-echo "From path: $APP_PATH"
+echo -e "${YELLOW}⚠️ Deleting application: $APP_NAME${NC}"
+echo "Path: $APP_PATH"
 echo "Domain: $DOMAIN"
 echo "Database: $DB_NAME"
-echo "PM2 process: $APP_NAME"
 echo "Port: $PORT"
+echo "PM2 Process: $APP_NAME"
 
 read -p "Are you sure you want to proceed with deletion? (y/n): " CONFIRM
 if [[ "$CONFIRM" != "y" ]]; then
-  echo "❌ Operation cancelled."
+  echo -e "${RED}❌ Operation cancelled.${NC}"
   exit 1
 fi
 
@@ -45,7 +51,7 @@ fi
 read -p "Drop database [$DB_NAME]? (y/n): " DELETE_DB
 if [[ "$DELETE_DB" == "y" ]]; then
   echo "💣 Dropping database..."
-  mysql -u root -p -e "DROP DATABASE IF EXISTS \`$DB_NAME\`;"
+  mariadb -u root -p -e "DROP DATABASE IF EXISTS \`$DB_NAME\`;"
 fi
 
 # Delete NGINX
@@ -56,12 +62,18 @@ if [[ "$DELETE_NGINX" == "y" ]]; then
   rm -f /etc/nginx/sites-enabled/$DOMAIN
   nginx -t && systemctl reload nginx
 fi
-
 # Delete SSL
 read -p "Delete SSL certificate for domain [$DOMAIN]? (y/n): " DELETE_SSL
 if [[ "$DELETE_SSL" == "y" ]]; then
   echo "🔐 Deleting SSL certificate..."
   certbot delete --cert-name "$DOMAIN"
+fi
+
+# Delete Logs Files
+read -p "Delete logs files ? (y/n): " DELETE_LOGS
+if [[ "$DELETE_LOGS" == "y" ]]; then
+  echo "🧹 Deleting logs files..."
+  rm -rf "/home/shared/Logs/$APP_NAME"
 fi
 
 # Delete
@@ -71,16 +83,12 @@ if [[ "$DELETE_CONFIG" == "y" ]]; then
   rm -f "$CONFIG_FILE"
 fi
 
-echo "✅ Deletion process completed (based on your choices)."
-
 # Remove port from used_ports.txt
-sed -i "/^$PORT$/d" /home/shared/Work/used_ports.txt
+sed -i "/^$PORT$/d" "$USED_PORTS_FILE"
 
 #  Remove Config File
 rm -f "$CONFIG_FILE"
 
-echo "✅ Port $PORT removed from used_ports.txt."
-
-echo "🎉 Done."
-
+echo -e "${GREEN}✅ Deletion completed for $APP_NAME (based on your choices).${NC}"
+echo -e "${GREEN}🎉 Done.${NC}"
 exit 0

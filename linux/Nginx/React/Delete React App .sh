@@ -16,22 +16,12 @@ source "$CONFIG_FILE"
 echo "⚠️ Deleting React application: $APP_NAME"
 echo "From path: $APP_PATH"
 echo "Domain: $DOMAIN"
-echo "PM2 process: $APP_NAME"
-echo "Port: $PORT"
 echo "Repo: $GIT_REPO"
 
 read -p "Are you sure you want to proceed with deletion? (y/n): " CONFIRM
 if [[ "$CONFIRM" != "y" ]]; then
   echo "❌ Operation cancelled."
   exit 1
-fi
-
-# PM2
-read -p "Delete PM2 process [$APP_NAME]? (y/n): " DELETE_PM2
-if [[ "$DELETE_PM2" == "y" ]]; then
-  echo "🛑 Stopping PM2 process..."
-  pm2 delete "$APP_NAME"
-  pm2 save
 fi
 
 # App folder
@@ -64,9 +54,6 @@ if [[ "$DELETE_CONFIG" == "y" ]]; then
   rm -f "$CONFIG_FILE"
 fi
 
-# Free up port
-sed -i "/^$PORT$/d" /home/shared/Work/used_ports.txt
-echo "✅ Port $PORT removed from used_ports.txt."
 
 echo "✅ Deletion completed for $APP_NAME (based on your choices)."
 echo "🎉 Done."
