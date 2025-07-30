@@ -35,7 +35,7 @@ fi
 # Delete PM2
 read -p "Delete PM2 process [$APP_NAME]? (y/n): " DELETE_PM2
 if [[ "$DELETE_PM2" == "y" ]]; then
-  echo "🛑 Stopping PM2 process..."
+  echo " Stopping PM2 process..."
   pm2 delete "$APP_NAME"
   pm2 save
 fi
@@ -43,21 +43,21 @@ fi
 # Delete App Directory
 read -p "Delete application folder [$APP_PATH]? (y/n): " DELETE_FOLDER
 if [[ "$DELETE_FOLDER" == "y" ]]; then
-  echo "🗑️ Deleting folder..."
+  echo "️ Deleting folder..."
   rm -rf "$APP_PATH"
 fi
 
 # Delete Database
 read -p "Drop database [$DB_NAME]? (y/n): " DELETE_DB
 if [[ "$DELETE_DB" == "y" ]]; then
-  echo "💣 Dropping database..."
+  echo " Dropping database..."
   mariadb -u root -p -e "DROP DATABASE IF EXISTS \`$DB_NAME\`;"
 fi
 
 # Delete NGINX
 read -p "Remove NGINX config for domain [$DOMAIN]? (y/n): " DELETE_NGINX
 if [[ "$DELETE_NGINX" == "y" ]]; then
-  echo "🧹 Removing NGINX config..."
+  echo "粒 Removing NGINX config..."
   rm -f /etc/nginx/sites-available/$DOMAIN
   rm -f /etc/nginx/sites-enabled/$DOMAIN
   nginx -t && systemctl reload nginx
@@ -65,21 +65,21 @@ fi
 # Delete SSL
 read -p "Delete SSL certificate for domain [$DOMAIN]? (y/n): " DELETE_SSL
 if [[ "$DELETE_SSL" == "y" ]]; then
-  echo "🔐 Deleting SSL certificate..."
+  echo " Deleting SSL certificate..."
   certbot delete --cert-name "$DOMAIN"
 fi
 
 # Delete Logs Files
 read -p "Delete logs files ? (y/n): " DELETE_LOGS
 if [[ "$DELETE_LOGS" == "y" ]]; then
-  echo "🧹 Deleting logs files..."
+  echo "粒 Deleting logs files..."
   rm -rf "/home/shared/Logs/$APP_NAME"
 fi
 
 # Delete
 read -p "Delete app config file [$CONFIG_FILE]? (y/n): " DELETE_CONFIG
 if [[ "$DELETE_CONFIG" == "y" ]]; then
-  echo "🧾 Removing config file..."
+  echo "茶 Removing config file..."
   rm -f "$CONFIG_FILE"
 fi
 
@@ -90,5 +90,5 @@ sed -i "/^$PORT$/d" "$USED_PORTS_FILE"
 rm -f "$CONFIG_FILE"
 
 echo -e "${GREEN}✅ Deletion completed for $APP_NAME (based on your choices).${NC}"
-echo -e "${GREEN}🎉 Done.${NC}"
+echo -e "${GREEN} Done.${NC}"
 exit 0
