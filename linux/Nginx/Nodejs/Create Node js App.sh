@@ -10,9 +10,17 @@ read -p "Startup file (e.g. server.js): " STARTUP_FILE
 STARTUP_FILE=${STARTUP_FILE:-index.js}
 APP_PATH="$BASE_PATH/$REL_PATH"
 read -p "Do you want a database? (y/n): " DB_CHOICE
-read -p "Subdomain: " SUBDOMAIN
 
-DOMAIN="$SUBDOMAIN.$DEFAULT_DOMAIN"
+read -p "Subdomain (or full domain): " SUBDOMAIN
+SUBDOMAIN=$(echo "$SUBDOMAIN" | sed -E 's#^https?://##')
+
+# Determine full domain
+if [[ "$SUBDOMAIN" == *.* ]]; then
+  DOMAIN="$SUBDOMAIN"
+else
+  DOMAIN="$SUBDOMAIN.$DEFAULT_DOMAIN"
+fi
+
 DB_NAME="$APP_NAME"
 
 CONFIG_DIR="$BASE_PATH/.apps/Nodejs"

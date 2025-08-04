@@ -47,9 +47,17 @@ trap cleanup ERR
 read -p "React App Name: " APP_NAME
 read -p "Path (relative to $BASE_PATH): " REL_PATH
 APP_PATH="$BASE_PATH/$REL_PATH"
-read -p "Subdomain: " SUBDOMAIN
-read -p "Git repo (leave blank if not available): " GIT_REPO
+read -p "Subdomain (or full domain): " SUBDOMAIN
+SUBDOMAIN=$(echo "$SUBDOMAIN" | sed -E 's#^https?://##')
 
+# Determine full domain
+if [[ "$SUBDOMAIN" == *.* ]]; then
+  DOMAIN="$SUBDOMAIN"
+else
+  DOMAIN="$SUBDOMAIN.$DEFAULT_DOMAIN"
+fi
+
+read -p "Git repo (leave blank if not available): " GIT_REPO
 # Check if HTTPS private repo and ask for PAT if needed
 if [[ "$GIT_REPO" == https://* ]]; then
   read -p "Is this a private repo? (y/n): " IS_PRIVATE
@@ -63,12 +71,11 @@ if [[ "$GIT_REPO" == https://* ]]; then
 elif [[ "$GIT_REPO" == git@* ]]; then
   echo "🔑 Make sure your SSH key is added to your GitHub account"
 fi
+
 if [[ -n "$GIT_REPO" ]]; then
   read -p "Branch name (leave blank for 'main'): " GIT_BRANCH
   GIT_BRANCH=${GIT_BRANCH:-main}
 fi
-
-DOMAIN="$SUBDOMAIN.$DEFAULT_DOMAIN"
 
 
 # ========== CREATE FOLDER ==========
@@ -88,7 +95,26 @@ else
   cat <<EOF > dist/index.html
 <!DOCTYPE html>
 <html>
-<head><title>$APP_NAME</title></head>
+<head>
+<title>$APP_NAME</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2c2c2c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="$APP_NAME">
+<meta name="keywords" content="$APP_NAME">
+<style>
+  * { box-sizing: border-box; padding: 0; margin: 0; }
+  body { 
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100dvh;
+      background-color: #2c2c2c;
+      color: #fff;
+  }
+</style>
+</head>
 <body><h1>$APP_NAME is running!</h1></body>
 </html>
 EOF
